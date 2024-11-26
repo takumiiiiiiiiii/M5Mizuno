@@ -146,7 +146,8 @@ void analyzeBuffer()
 //初期化関数
 void initGL()
 {
-    //描画ウィンドウ生成
+   //描画ウィンドウ生成
+    glutInitDisplayMode(GLUT_RGBA);  //ディスプレイモードの指定
     glutInitWindowSize(floorW, floorH);  //ウィンドウサイズの指定
     glutCreateWindow("CG");  //ウィンドウの生成
     
