@@ -50,7 +50,7 @@ double deg = 0.0;//物体の回転角度
 ALuint soundSource;//音源
 
 //飛行機の関係
-double y_speed=0.1;
+double y_speed=0.01;
 double y_move=0;
 double z_speed=0.1;
 double z_move=0;
@@ -78,23 +78,28 @@ void display()
 {
     //視点座標の計算
     Vec_3D e;
-    e.x = eDist*cos(eDegX*M_PI/180.0)*sin(eDegY*M_PI/180.0);
-    e.y = eDist*sin(eDegX*M_PI/180.0);
-    e.z = eDist*cos(eDegX*M_PI/180.0)*cos(eDegY*M_PI/180.0);
+    double eDegX_move=eDegX;
+    e.x = eDist*cos(eDegX_move*M_PI/180.0)*sin(eDegY*M_PI/180.0);
+    e.y = eDist*sin(eDegX_move*M_PI/180.0);
+    e.z = eDist*cos(eDegX_move*M_PI/180.0)*cos(eDegY*M_PI/180.0);
     //注視点の計算
     Vec_3D c;
     c.x = eDist*cos(eDegX*M_PI/180.0)*sin(eDegY*M_PI/180.0);
     c.y = eDist*sin(eDegX*M_PI/180.0);
     c.z = eDist*cos(eDegX*M_PI/180.0)*cos(eDegY*M_PI/180.0);
-    z_speed=0.000001;
+    z_speed=0.01;
     z_move+=z_speed;
     //モデルビュー変換の設定
     glMatrixMode(GL_MODELVIEW);  //変換行列の指定（設定対象はモデルビュー変換行列）
     glLoadIdentity();  //行列初期化
-    y_move+=y_speed*val[1];
+    //y_move+=y_speed*val[1];
     y_move+=y_speed;
-    gluLookAt(e.x, e.y+y_move, e.z, 0.0, y_move-10, 0.0, 0.0, 1, 0.0);  //視点視線設定（視野変換行列を乗算）
-    //gluLookAt(e.x, e.y, e.z+z_move, 0.0, 0.0, z_move, 0.0, 1.0, 0.0);  //視点視線設定（視野変換行列を乗算）
+    y_move=0;
+    //gluLookAt(0,0,0, 0.0, y_move-10, 0.0, 0.0, 1, 0.0);  //視点視線設定（視野変換行列を乗算）
+    //gluLookAt(0,y_move, -z_move, e.x, e.y+y_move, e.z-z_move, 0.0, 1, 0.0);  //視点視線設定（視野変換行列を乗算）
+    //gluLookAt(0,y_move, 0, e.x, e.y+y_move, e.z, 0.0, 1, 0.0);  //視点視線設定（視野変換行列を乗算）
+    gluLookAt(0,y_move, 10, e.x, y_move+e.y, e.z+10, z_move, 1, 0);  //視点視線設定（視野変換行列を乗算）
+   
 
     //光源０の位置指定
     GLfloat lightPos0[] = {0,5.0,5.0,1.0};//光源0の座標(x,y,z,距離の倍率 0だと無限の距離の光,1だと電球のような光)
@@ -346,7 +351,7 @@ void initGL()
    
     //GLfloat col[4],spe[4],shi[1];
     //視点関係
-    eDist = 15.0; eDegX = 0.0; eDegY = 0.0;
+    eDist = 15.0; eDegX = 180.0; eDegY = 0.0;
     
     //床面頂点
     for (int j=0; j<TILE; j++) {
@@ -390,11 +395,11 @@ void keyboard(unsigned char key, int x, int y)
         case 27:
             exit(0);  //終了
         case 'w':
-            y_speed=0.1;
+            y_speed=0.01;
             //alSourcePlay(soundSource);
             break;
         case 's':
-            y_speed=-0.1;
+            y_speed=-0.01;
             //alSourcePlay(soundSource);
             break;
         default:
