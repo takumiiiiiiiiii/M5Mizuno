@@ -36,8 +36,12 @@ void timer(int value);
 void initSerial();
 int getSerialData();
 void analyzeBuffer();
+void drawRoad(float x, float y, float z, float width, float length);
+void drawSolidBuilding(float x, float y, float z, float size, float r, float g, float b);
 Vec_3D normcrossprod(Vec_3D v1,Vec_3D v2);//ベクトルが移籍計算関数
+Vec_3D movevecnormalize(Vec_3D v1,Vec_3D v2);
 double vectorNormalize(Vec_3D*vec);//ベクトル正規化用関数
+
 //グローバル変数
 double eDist, eDegX, eDegY;
 double mX, mY, mState, mButton;
@@ -50,10 +54,14 @@ double deg = 0.0;//物体の回転角度
 ALuint soundSource;//音源
 
 //飛行機の関係
-double y_speed=0.1;
+double x_move=0;
+double y_speed=0.01;
 double y_move=0;
 double z_speed=0.1;
 double z_move=0;
+double speed = 0.01;
+Vec_3D move_vec;//動く
+Vec_3D player_vec={0,0,10};
 //シリアル通信関係
 int fd;  //シリアルポート
 char bufferAll[BUFF_SIZE];  //蓄積バッファデータ
@@ -78,23 +86,40 @@ void display()
 {
     //視点座標の計算
     Vec_3D e;
-    e.x = eDist*cos(eDegX*M_PI/180.0)*sin(eDegY*M_PI/180.0);
-    e.y = eDist*sin(eDegX*M_PI/180.0);
-    e.z = eDist*cos(eDegX*M_PI/180.0)*cos(eDegY*M_PI/180.0);
-    //注視点の計算
-    Vec_3D c;
-    c.x = eDist*cos(eDegX*M_PI/180.0)*sin(eDegY*M_PI/180.0);
-    c.y = eDist*sin(eDegX*M_PI/180.0);
-    c.z = eDist*cos(eDegX*M_PI/180.0)*cos(eDegY*M_PI/180.0);
-    z_speed=0.000001;
+    double eDegX_move=eDegX+y_move;
+    double eDegY_move=eDegY+x_move;
+    e.x = eDist*cos(eDegX_move*M_PI/180.0)*sin(eDegY_move*M_PI/180.0)+player_vec.x;
+    e.y = eDist*sin(eDegX_move*M_PI/180.0)+player_vec.y;
+    e.z = eDist*cos(eDegX_move*M_PI/180.0)*cos(eDegY_move*M_PI/180.0)+player_vec.z;
+    z_speed=0.01;
     z_move+=z_speed;
     //モデルビュー変換の設定
+    
     glMatrixMode(GL_MODELVIEW);  //変換行列の指定（設定対象はモデルビュー変換行列）
     glLoadIdentity();  //行列初期化
-    y_move+=y_speed*val[1];
-    y_move+=y_speed;
-    gluLookAt(e.x, e.y+y_move, e.z, 0.0, y_move-10, 0.0, 0.0, 1, 0.0);  //視点視線設定（視野変換行列を乗算）
-    //gluLookAt(e.x, e.y, e.z+z_move, 0.0, 0.0, z_move, 0.0, 1.0, 0.0);  //視点視線設定（視野変換行列を乗算）
+    //y_move+=y_speed*val[1];
+    // y_move+=y_speed;
+    // y_move=0;
+    //gluLookAt(0,0,0, 0.0, y_move-10, 0.0, 0.0, 1, 0.0);  //視点視線設定（視野変換行列を乗算）
+    //gluLookAt(0,y_move, -z_move, e.x, e.y+y_move, e.z-z_move, 0.0, 1, 0.0);  //視点視線設定（視野変換行列を乗算）
+    //gluLookAt(0,y_move, 0, e.x, e.y+y_move, e.z, 0.0, 1, 0.0);  //視点視線設定（視野変換行列を乗算）
+    
+    Vec_3D camera_vec={0,y_move, 10};
+    Vec_3D point_vec={e.x,y_move+e.y,e.z+10};
+    // move_vec = camera_vec-point_vec;
+    // move_vec=vectorNormalize(move_vec);
+
+    move_vec=movevecnormalize(player_vec,e);
+    
+    move_vec.x = move_vec.x*speed;
+    move_vec.y = move_vec.y*speed;
+    move_vec.z = move_vec.z*speed;
+    player_vec.x -= move_vec.x ;
+    player_vec.y -= move_vec.y ;
+    player_vec.z -= move_vec.z ;
+    // gluLookAt(0,y_move, 10, e.x, y_move+e.y, e.z+10, 0, 1, 0);  //視点視線設定（視野変換行列を乗算）
+    gluLookAt(player_vec.x,player_vec.y, player_vec.z, e.x,e.y,e.z, 0, 1, 0);  //視点視線設定（視野変換行列を乗算）
+   
 
     //光源０の位置指定
     GLfloat lightPos0[] = {0,5.0,5.0,1.0};//光源0の座標(x,y,z,距離の倍率 0だと無限の距離の光,1だと電球のような光)
@@ -104,8 +129,13 @@ void display()
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  //画面消去
     //光源0の位置指定
     GLfloat col[4],spe[4],shi[1];
-
-   
+    //全てを回転させる
+    glPushMatrix();
+    glRotated(0,0,0,1);
+    glScaled(0.2,0.2,0.2);
+    // 道路の描画
+    drawRoad(0.0f, 0.0f, 0.0f, 10.0f, 40.0f);
+    drawRoad(-10.0f, 0.0f, 10.0f, 40.0f, 10.0f);
     //床
     col[0] = .0;col[1]= 1.0;col[2] = 0.0;//拡散反射係数&環境後継すう(RGBA)
     spe[0] = 1.0;spe[1]= 1.0;spe[2] = 1.0;//鏡面反射係数(RGBA)
@@ -126,7 +156,12 @@ void display()
     }
     glEnd();  //物体頂点配置終了
     glPopMatrix();  //行列復帰
-
+//四角
+// ビルの描画
+    drawSolidBuilding(-5.0f, 0.0f, 5.0f, 3.0f, 0.5f, 0.5f, 0.5f);
+    drawSolidBuilding(5.0f, 0.0f, 5.0f, 4.0f, 0.3f, 0.7f, 0.3f);
+    drawSolidBuilding(-5.0f, 0.0f, -5.0f, 2.0f, 0.7f, 0.3f, 0.3f);
+    drawSolidBuilding(5.0f, 0.0f, -5.0f, 5.0f, 0.2f, 0.2f, 0.8f);
 //三角形
     Vec_3D p0,p1,p2,v1,v2,v3;//三角形頂点＆辺ベクトル用
     Vec_3D n;//法線ベクトル用
@@ -181,6 +216,7 @@ void display()
     glVertex3d(p1.x,p1.y,p1.z);
     glVertex3d(p2.x,p2.y,p2.z);
     glEnd();
+    
     glPopMatrix();
 
 //三角形3
@@ -236,7 +272,7 @@ void display()
     glVertex3d(p2.x,p2.y,p2.z);
     glEnd();
     glPopMatrix();
-
+    glPopMatrix();
     glutSwapBuffers();  //描画実行
 }
 
@@ -346,7 +382,7 @@ void initGL()
    
     //GLfloat col[4],spe[4],shi[1];
     //視点関係
-    eDist = 15.0; eDegX = 0.0; eDegY = 0.0;
+    eDist = 15.0; eDegX = 180.0; eDegY = 0.0;
     
     //床面頂点
     for (int j=0; j<TILE; j++) {
@@ -390,11 +426,24 @@ void keyboard(unsigned char key, int x, int y)
         case 27:
             exit(0);  //終了
         case 'w':
-            y_speed=0.1;
+            y_speed=0.01;
+            y_move-=10;
             //alSourcePlay(soundSource);
             break;
         case 's':
-            y_speed=-0.1;
+            y_speed=-0.01;
+            y_move+=10;
+            //alSourcePlay(soundSource);
+            break;
+        case 'a':
+            y_speed=0.01;
+            // y_move+=10;
+            x_move+=10;
+            //alSourcePlay(soundSource);
+            break;
+        case 'd':
+            y_speed=-0.01;
+            x_move-=10;
             //alSourcePlay(soundSource);
             break;
         default:
@@ -459,6 +508,17 @@ Vec_3D normcrossprod(Vec_3D v1,Vec_3D v2)
     //戻り値
     return out;//戻り値は外積ベクトル
 }
+//ベクトルの外積計算
+Vec_3D movevecnormalize(Vec_3D v1,Vec_3D v2)
+{
+    Vec_3D out;
+    out.x = v1.x - v2.x;
+    out.y = v1.x - v2.y;
+    out.z = v1.z - v2.z;
+    vectorNormalize(&out);
+    //戻り値
+    return out;//戻り値は外積ベクトル
+}
 double vectorNormalize(Vec_3D*vec){
     double len;
     len = sqrt(vec->x*vec->x+vec->y*vec->y+vec->z*vec->z);
@@ -468,4 +528,22 @@ double vectorNormalize(Vec_3D*vec){
         vec->z = vec->z/len;
     }
     return len;
+}
+
+void drawSolidBuilding(float x, float y, float z, float size, float r, float g, float b) {
+    glPushMatrix();
+    glTranslatef(x, y + size / 2.0f, z); // 中心を底面に合わせる
+    glColor3f(r, g, b); // 色を設定
+    glutSolidCube(size); // 立方体を描画
+    glPopMatrix();
+}
+
+// 道路を描画する関数
+void drawRoad(float x, float y, float z, float width, float length) {
+    glPushMatrix();
+    glTranslatef(x, y + 0.01f, z); // 少し上に上げて重なりを防ぐ
+    glScalef(width, 0.02f, length); // 幅と長さを調整
+    glColor3f(0.1f, 0.1f, 0.1f); // 道路の色
+    glutSolidCube(1.0f); // 立方体をスケールして道路を描画
+    glPopMatrix();
 }
