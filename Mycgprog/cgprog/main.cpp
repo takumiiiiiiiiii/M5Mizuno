@@ -24,6 +24,18 @@ typedef struct _Vec_3D
     double x, y, z;
 } Vec_3D;
 
+// 建物の数
+const int NUM_BUILDINGS = 200;
+
+// 建物の位置、サイズ、色を格納
+struct Building {
+    float x, z;   // 位置
+    float size;   // サイズ
+    float r, g, b; // 色
+};
+
+// 建物のデータ
+Building buildings[NUM_BUILDINGS];
 //関数名の宣言
 void initGL();
 void initAL();
@@ -37,10 +49,12 @@ void initSerial();
 int getSerialData();
 void analyzeBuffer();
 void drawRoad(float x, float y, float z, float width, float length);
-void drawSolidBuilding(float x, float y, float z, float size, float r, float g, float b);
+//void drawSolidBuilding(float x, float y, float z, float size, float r, float g, float b);
 Vec_3D normcrossprod(Vec_3D v1,Vec_3D v2);//ベクトルが移籍計算関数
 Vec_3D movevecnormalize(Vec_3D v1,Vec_3D v2);
 double vectorNormalize(Vec_3D*vec);//ベクトル正規化用関数
+void generateBuildings();
+void drawSolidBuilding(float x, float y, float z, float size, float r, float g, float b);
 
 //グローバル変数
 double eDist, eDegX, eDegY;
@@ -61,7 +75,7 @@ double z_speed=0.1;
 double z_move=0;
 double speed = 0.01;
 Vec_3D move_vec;//動く
-Vec_3D player_vec={0,0,10};
+Vec_3D player_vec={0,3,10};
 //シリアル通信関係
 int fd;  //シリアルポート
 char bufferAll[BUFF_SIZE];  //蓄積バッファデータ
@@ -74,6 +88,7 @@ int main(int argc, char *argv[])
     initSerial();  //シリアルポート初期化
     glutInit(&argc, argv);  //OpenGL/GLUTの初期化
     alutInit(&argc, argv);  //OpenGL/GLUTの初期化
+    generateBuildings(); // 建物をランダム生成
     initGL();  //初期設定
     initAL();  //OpenAL初期設定
     glutMainLoop();  //イベント待ち無限ループ
@@ -84,6 +99,18 @@ int main(int argc, char *argv[])
 //ディスプレイコールバック関数
 void display()
 {
+    val[1]=(val[1]*100);
+    val[1]=(int)val[1]/5;
+    double y_angle=70.0*-val[1];
+    if(y_move<y_angle){
+        y_move+=0.5;
+    }else{
+        y_move-=0.5;
+    }
+    //y_move=70.0*-val[1];
+    
+    //左右方向の移動
+    x_move+=0.5*val[0];
     //視点座標の計算
     Vec_3D e;
     double eDegX_move=eDegX+y_move;
@@ -91,6 +118,7 @@ void display()
     e.x = eDist*cos(eDegX_move*M_PI/180.0)*sin(eDegY_move*M_PI/180.0)+player_vec.x;
     e.y = eDist*sin(eDegX_move*M_PI/180.0)+player_vec.y;
     e.z = eDist*cos(eDegX_move*M_PI/180.0)*cos(eDegY_move*M_PI/180.0)+player_vec.z;
+    
     z_speed=0.01;
     z_move+=z_speed;
     //モデルビュー変換の設定
@@ -119,7 +147,10 @@ void display()
     player_vec.z -= move_vec.z ;
     // gluLookAt(0,y_move, 10, e.x, y_move+e.y, e.z+10, 0, 1, 0);  //視点視線設定（視野変換行列を乗算）
     gluLookAt(player_vec.x,player_vec.y, player_vec.z, e.x,e.y,e.z, 0, 1, 0);  //視点視線設定（視野変換行列を乗算）
-   
+    //  glPushMatrix();
+    // glTranslated(e.x,e.y,e.y);
+    // glutSolidCube(1);
+    // glPopMatrix();
 
     //光源０の位置指定
     GLfloat lightPos0[] = {0,5.0,5.0,1.0};//光源0の座標(x,y,z,距離の倍率 0だと無限の距離の光,1だと電球のような光)
@@ -129,13 +160,25 @@ void display()
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  //画面消去
     //光源0の位置指定
     GLfloat col[4],spe[4],shi[1];
+
+    
+
     //全てを回転させる
     glPushMatrix();
     glRotated(0,0,0,1);
     glScaled(0.2,0.2,0.2);
+
     // 道路の描画
     drawRoad(0.0f, 0.0f, 0.0f, 10.0f, 40.0f);
     drawRoad(-10.0f, 0.0f, 10.0f, 40.0f, 10.0f);
+    // 建物群の描画
+    for (int i = 0; i < NUM_BUILDINGS; ++i) {
+        drawSolidBuilding(
+            buildings[i].x, 0.0f, buildings[i].z, 
+            buildings[i].size, 
+            buildings[i].r, buildings[i].g, buildings[i].b
+        );
+    }
     //床
     col[0] = .0;col[1]= 1.0;col[2] = 0.0;//拡散反射係数&環境後継すう(RGBA)
     spe[0] = 1.0;spe[1]= 1.0;spe[2] = 1.0;//鏡面反射係数(RGBA)
@@ -158,10 +201,10 @@ void display()
     glPopMatrix();  //行列復帰
 //四角
 // ビルの描画
-    drawSolidBuilding(-5.0f, 0.0f, 5.0f, 3.0f, 0.5f, 0.5f, 0.5f);
-    drawSolidBuilding(5.0f, 0.0f, 5.0f, 4.0f, 0.3f, 0.7f, 0.3f);
-    drawSolidBuilding(-5.0f, 0.0f, -5.0f, 2.0f, 0.7f, 0.3f, 0.3f);
-    drawSolidBuilding(5.0f, 0.0f, -5.0f, 5.0f, 0.2f, 0.2f, 0.8f);
+    // drawSolidBuilding(-5.0f, 0.0f, 5.0f, 3.0f, 0.5f, 0.5f, 0.5f);
+    // drawSolidBuilding(5.0f, 0.0f, 5.0f, 4.0f, 0.3f, 0.7f, 0.3f);
+    // drawSolidBuilding(-5.0f, 0.0f, -5.0f, 2.0f, 0.7f, 0.3f, 0.3f);
+    // drawSolidBuilding(5.0f, 0.0f, -5.0f, 5.0f, 0.2f, 0.2f, 0.8f);
 //三角形
     Vec_3D p0,p1,p2,v1,v2,v3;//三角形頂点＆辺ベクトル用
     Vec_3D n;//法線ベクトル用
@@ -513,7 +556,7 @@ Vec_3D movevecnormalize(Vec_3D v1,Vec_3D v2)
 {
     Vec_3D out;
     out.x = v1.x - v2.x;
-    out.y = v1.x - v2.y;
+    out.y = v1.y - v2.y;
     out.z = v1.z - v2.z;
     vectorNormalize(&out);
     //戻り値
@@ -530,13 +573,13 @@ double vectorNormalize(Vec_3D*vec){
     return len;
 }
 
-void drawSolidBuilding(float x, float y, float z, float size, float r, float g, float b) {
-    glPushMatrix();
-    glTranslatef(x, y + size / 2.0f, z); // 中心を底面に合わせる
-    glColor3f(r, g, b); // 色を設定
-    glutSolidCube(size); // 立方体を描画
-    glPopMatrix();
-}
+// void drawSolidBuilding(float x, float y, float z, float size, float r, float g, float b) {
+//     glPushMatrix();
+//     glTranslatef(x, y + size / 2.0f, z); // 中心を底面に合わせる
+//     glColor3f(r, g, b); // 色を設定
+//     glutSolidCube(size); // 立方体を描画
+//     glPopMatrix();
+// }
 
 // 道路を描画する関数
 void drawRoad(float x, float y, float z, float width, float length) {
@@ -546,4 +589,26 @@ void drawRoad(float x, float y, float z, float width, float length) {
     glColor3f(0.1f, 0.1f, 0.1f); // 道路の色
     glutSolidCube(1.0f); // 立方体をスケールして道路を描画
     glPopMatrix();
+}
+
+// 建物を描画
+void drawSolidBuilding(float x, float y, float z, float size, float r, float g, float b) {
+    glPushMatrix();
+    glTranslatef(x, y + size / 2.0f, z); // 中心を底面に合わせる
+    glColor3f(r, g, b); // 色を設定
+    glutSolidCube(size); // 立方体を描画
+    glPopMatrix();
+}
+
+// 建物をランダムに生成
+void generateBuildings() {
+    srand(static_cast<unsigned int>(time(0))); // ランダムシード
+    for (int i = 0; i < NUM_BUILDINGS; ++i) {
+        buildings[i].x = (rand() % 200) - 100;      // -100から100の範囲
+        buildings[i].z = (rand() % 200) - 100;     // -100から100の範囲
+        buildings[i].size = (rand() % 10) + 1;     // サイズは1〜10
+        buildings[i].r = static_cast<float>(rand() % 100) / 100.0f; // 0.0〜1.0
+        buildings[i].g = static_cast<float>(rand() % 100) / 100.0f; // 0.0〜1.0
+        buildings[i].b = static_cast<float>(rand() % 100) / 100.0f; // 0.0〜1.0
+    }
 }
