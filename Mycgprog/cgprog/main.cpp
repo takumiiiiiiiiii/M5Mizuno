@@ -100,12 +100,12 @@ int main(int argc, char *argv[])
 void display()
 {
     val[1]=(val[1]*100);
-    val[1]=(int)val[1]/5;
-    double y_angle=70.0*-val[1];
+    val[1]=(int)val[1]/10;
+    double y_angle=-val[1]*5;
     if(y_move<y_angle){
-        y_move+=0.5;
+        y_move+=0.1;
     }else{
-        y_move-=0.5;
+        y_move-=0.1;
     }
     //y_move=70.0*-val[1];
     
@@ -146,7 +146,7 @@ void display()
     player_vec.y -= move_vec.y ;
     player_vec.z -= move_vec.z ;
     // gluLookAt(0,y_move, 10, e.x, y_move+e.y, e.z+10, 0, 1, 0);  //視点視線設定（視野変換行列を乗算）
-    gluLookAt(player_vec.x,player_vec.y, player_vec.z, e.x,e.y,e.z, 0, 1, 0);  //視点視線設定（視野変換行列を乗算）
+    gluLookAt(player_vec.x,player_vec.y, player_vec.z, e.x,e.y,e.z, -val[0]*1, 1, 0);  //視点視線設定（視野変換行列を乗算）
     //  glPushMatrix();
     // glTranslated(e.x,e.y,e.y);
     // glutSolidCube(1);
