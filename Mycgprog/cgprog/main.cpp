@@ -10,7 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-
+// 上方向ベクトル（初期状態）
+GLdouble upX = 0.0, upY = 1.0, upZ = 0.0;
 //シリアルポート用
 #define DEV_NAME "/dev/cu.M5stick_No3"  //M5StickC Plus2接続シリアルポート
 #define BAUD_RATE B115200  //通信速度
@@ -18,6 +19,7 @@
 #define TILE 50  //格子頂点数
 
 double T=0;
+
 //三次元ベクトル構造体: Vec_3D
 typedef struct _Vec_3D
 {
@@ -25,7 +27,7 @@ typedef struct _Vec_3D
 } Vec_3D;
 
 // 建物の数
-const int NUM_BUILDINGS = 200;
+const int NUM_BUILDINGS = 1000;
 
 // 建物の位置、サイズ、色を格納
 struct Building {
@@ -55,6 +57,7 @@ Vec_3D movevecnormalize(Vec_3D v1,Vec_3D v2);
 double vectorNormalize(Vec_3D*vec);//ベクトル正規化用関数
 void generateBuildings();
 void drawSolidBuilding(float x, float y, float z, float size, float r, float g, float b);
+void setColor(double r, double g, double b, double a);
 
 //グローバル変数
 double eDist, eDegX, eDegY;
@@ -66,7 +69,8 @@ double fr = 60.0;  //フレームレート
 double floorW= 1076.0,floorH = 691.0;//床の投影面サイズ
 double deg = 0.0;//物体の回転角度
 ALuint soundSource;//音源
-
+//建物
+int buildcolor=0;
 //飛行機の関係
 double x_move=0;
 double y_speed=0.01;
@@ -76,6 +80,7 @@ double z_move=0;
 double speed = 0.01;
 Vec_3D move_vec;//動く
 Vec_3D player_vec={0,3,10};
+double angle = 0; // 30度
 //シリアル通信関係
 int fd;  //シリアルポート
 char bufferAll[BUFF_SIZE];  //蓄積バッファデータ
@@ -85,13 +90,17 @@ double val[6];  //受信データ
 //メイン関数
 int main(int argc, char *argv[])
 {
+    
     initSerial();  //シリアルポート初期化
     glutInit(&argc, argv);  //OpenGL/GLUTの初期化
     alutInit(&argc, argv);  //OpenGL/GLUTの初期化
     generateBuildings(); // 建物をランダム生成
     initGL();  //初期設定
     initAL();  //OpenAL初期設定
+
+     alSourcePlay(soundSource);
     glutMainLoop();  //イベント待ち無限ループ
+    
     
     return 0;
 }
@@ -99,6 +108,7 @@ int main(int argc, char *argv[])
 //ディスプレイコールバック関数
 void display()
 {
+
     val[1]=(val[1]*100);
     val[1]=(int)val[1]/10;
     double y_angle=-val[1]*5;
@@ -136,7 +146,7 @@ void display()
     Vec_3D point_vec={e.x,y_move+e.y,e.z+10};
     // move_vec = camera_vec-point_vec;
     // move_vec=vectorNormalize(move_vec);
-
+    
     move_vec=movevecnormalize(player_vec,e);
     
     move_vec.x = move_vec.x*speed;
@@ -145,8 +155,17 @@ void display()
     player_vec.x -= move_vec.x ;
     player_vec.y -= move_vec.y ;
     player_vec.z -= move_vec.z ;
+    printf("player:%lf\n",move_vec.z);
     // gluLookAt(0,y_move, 10, e.x, y_move+e.y, e.z+10, 0, 1, 0);  //視点視線設定（視野変換行列を乗算）
-    gluLookAt(player_vec.x,player_vec.y, player_vec.z, e.x,e.y,e.z, -val[0]*1, 1, 0);  //視点視線設定（視野変換行列を乗算）
+
+    // 回転角度（度数法で指定）
+
+    double radians = angle * M_PI / 180.0; // ラジアンに変換
+    angle=val[1]*90;
+    // 上方向ベクトルを回転
+    GLdouble rotatedUpX = upX * cos(radians) - upY * sin(radians);
+    gluLookAt(player_vec.x,player_vec.y, player_vec.z, e.x,e.y,e.z,  move_vec.z*100*rotatedUpX, 1,  -move_vec.x*100*rotatedUpX);  //視点視線設定（視野変換行列を乗算）
+    
     //  glPushMatrix();
     // glTranslated(e.x,e.y,e.y);
     // glutSolidCube(1);
@@ -169,8 +188,9 @@ void display()
     glScaled(0.2,0.2,0.2);
 
     // 道路の描画
-    drawRoad(0.0f, 0.0f, 0.0f, 10.0f, 40.0f);
-    drawRoad(-10.0f, 0.0f, 10.0f, 40.0f, 10.0f);
+    
+    drawRoad(0.0f, 0.0f, 0.0f, 1000.0f,10000.0f);
+    buildcolor=0;
     // 建物群の描画
     for (int i = 0; i < NUM_BUILDINGS; ++i) {
         drawSolidBuilding(
@@ -178,143 +198,8 @@ void display()
             buildings[i].size, 
             buildings[i].r, buildings[i].g, buildings[i].b
         );
+        buildcolor+=1;
     }
-    //床
-    col[0] = .0;col[1]= 1.0;col[2] = 0.0;//拡散反射係数&環境後継すう(RGBA)
-    spe[0] = 1.0;spe[1]= 1.0;spe[2] = 1.0;//鏡面反射係数(RGBA)
-    shi[0] = 100.0;//ハイライト係数(p
-    glMaterialfv(GL_FRONT_AND_BACK,GL_AMBIENT_AND_DIFFUSE,col);
-    glMaterialfv(GL_FRONT_AND_BACK,GL_SPECULAR,spe);
-    glMaterialfv(GL_FRONT_AND_BACK,GL_SHININESS,shi);
-    glPushMatrix();
-    glBegin(GL_QUADS);  //物体（四角形）頂点配置開始
-    glNormal3b(0.0,1.0,0.0);//方線ベクトル設定;
-    for (int j=0; j<TILE-1; j++) {
-        for (int i=0; i<TILE-1; i++) {
-            glVertex3d(fPoint[i][j].x, fPoint[i][j].y, fPoint[i][j].z);  //頂点
-            glVertex3d(fPoint[i][j+1].x, fPoint[i][j+1].y, fPoint[i][j+1].z);  //頂点
-            glVertex3d(fPoint[i+1][j+1].x, fPoint[i+1][j+1].y, fPoint[i+1][j+1].z);  //頂点
-            glVertex3d(fPoint[i+1][j].x, fPoint[i+1][j].y, fPoint[i+1][j].z);  //頂点
-        }
-    }
-    glEnd();  //物体頂点配置終了
-    glPopMatrix();  //行列復帰
-//四角
-// ビルの描画
-    // drawSolidBuilding(-5.0f, 0.0f, 5.0f, 3.0f, 0.5f, 0.5f, 0.5f);
-    // drawSolidBuilding(5.0f, 0.0f, 5.0f, 4.0f, 0.3f, 0.7f, 0.3f);
-    // drawSolidBuilding(-5.0f, 0.0f, -5.0f, 2.0f, 0.7f, 0.3f, 0.3f);
-    // drawSolidBuilding(5.0f, 0.0f, -5.0f, 5.0f, 0.2f, 0.2f, 0.8f);
-//三角形
-    Vec_3D p0,p1,p2,v1,v2,v3;//三角形頂点＆辺ベクトル用
-    Vec_3D n;//法線ベクトル用
-    //頂点座標
-    p0.x = 0;p0.y = 1.0;p0.z = 0;
-    p1.x = -2.0;p1.y = -1.0;p1.z = 2.0;
-    p2.x = 2.0;p2.y = -1.0;p2.z = 2.0;
-    //辺ベクトル
-    v1.x = p1.x-p0.x; v1.y = p1.y-p0.y; v1.z = p1.z-p0.z;
-    v2.x = p2.x-p0.x; v2.y = p2.y-p0.y; v1.z = p2.z-p0.z;
-    //方線ベクトル計算
-    n = normcrossprod(v1,v2);//三角形p0-p1-p2の法線ベクトルは辺ベクトルv1とv2の外戚
-    //材質
-    col[0] = 0.9;col[1]= .0;col[2] = 0.9; col[3] = 1.0;//拡散反射係数&環境後継すう(RGBA)
-    spe[0] = 1.0;spe[1]= 1.00;spe[2] = 1.0; col[3] = 1.0;//鏡面反射係数(RGBA)
-    shi[0] = 100.0;//ハイライト係数(p
-    glMaterialfv(GL_FRONT_AND_BACK,GL_AMBIENT_AND_DIFFUSE,col);
-    glMaterialfv(GL_FRONT_AND_BACK,GL_SPECULAR,spe);
-    glMaterialfv(GL_FRONT_AND_BACK,GL_SHININESS,shi);
-    //配置
-    glPushMatrix();//行列一時保存
-    glNormal3d(n.x,n.y,n.z);//法線ベクトルの設定
-    glBegin(GL_TRIANGLES);
-    glVertex3d(p0.x,p0.y,p0.z);
-    glVertex3d(p1.x,p1.y,p1.z);
-    glVertex3d(p2.x,p2.y,p2.z);
-    glEnd();
-    glPopMatrix();
-    
-//三角形2
-    //頂点座標
-    p0.x = 0;p0.y = 1.0;p0.z = 0;
-    p1.x = -2.0;p1.y = -1.0;p1.z = 2.0;
-    p2.x = -2.0;p2.y = -1.0;p2.z = -2.0;
-    //辺ベクトル
-    v1.x = p1.x-p0.x; v1.y = p1.y-p0.y; v1.z = p1.z-p0.z;
-    v2.x = p2.x-p0.x; v2.y = p2.y-p0.y; v1.z = p2.z-p0.z;
-    //方線ベクトル計算
-    n = normcrossprod(v1,v2);//三角形p0-p1-p2の法線ベクトルは辺ベクトルv1とv2の外戚
-    //材質
-    col[0] = 0.9;col[1]= .0;col[2] = 0.9; col[3] = 1.0;//拡散反射係数&環境後継すう(RGBA)
-    spe[0] = 1.0;spe[1]= 1.00;spe[2] = 1.0; col[3] = 1.0;//鏡面反射係数(RGBA)
-    shi[0] = 100.0;//ハイライト係数(p
-    glMaterialfv(GL_FRONT_AND_BACK,GL_AMBIENT_AND_DIFFUSE,col);
-    glMaterialfv(GL_FRONT_AND_BACK,GL_SPECULAR,spe);
-    glMaterialfv(GL_FRONT_AND_BACK,GL_SHININESS,shi);
-    //配置
-    glPushMatrix();//行列一時保存
-    glNormal3d(n.x,n.y,n.z);//法線ベクトルの設定
-    glBegin(GL_TRIANGLES);
-    glVertex3d(p0.x,p0.y,p0.z);
-    glVertex3d(p1.x,p1.y,p1.z);
-    glVertex3d(p2.x,p2.y,p2.z);
-    glEnd();
-    
-    glPopMatrix();
-
-//三角形3
-    //頂点座標
-    p0.x = 0;p0.y = 1.0;p0.z = 0;
-    p1.x = -2.0;p1.y = -1.0;p1.z = -2.0;
-    p2.x = 2.0;p2.y = -1.0;p2.z = -2.0;
-    //辺ベクトル
-    v1.x = p1.x-p0.x; v1.y = p1.y-p0.y; v1.z = p1.z-p0.z;
-    v2.x = p2.x-p0.x; v2.y = p2.y-p0.y; v1.z = p2.z-p0.z;
-    //方線ベクトル計算
-    n = normcrossprod(v1,v2);//三角形p0-p1-p2の法線ベクトルは辺ベクトルv1とv2の外戚
-    //材質
-    col[0] = 0.9;col[1]= .0;col[2] = 0.9; col[3] = 1.0;//拡散反射係数&環境後継すう(RGBA)
-    spe[0] = 1.0;spe[1]= 1.00;spe[2] = 1.0; col[3] = 1.0;//鏡面反射係数(RGBA)
-    shi[0] = 100.0;//ハイライト係数(p
-    glMaterialfv(GL_FRONT_AND_BACK,GL_AMBIENT_AND_DIFFUSE,col);
-    glMaterialfv(GL_FRONT_AND_BACK,GL_SPECULAR,spe);
-    glMaterialfv(GL_FRONT_AND_BACK,GL_SHININESS,shi);
-    //配置
-    glPushMatrix();//行列一時保存
-    glNormal3d(n.x,n.y,n.z);//法線ベクトルの設定
-    glBegin(GL_TRIANGLES);
-    glVertex3d(p0.x,p0.y,p0.z);
-    glVertex3d(p1.x,p1.y,p1.z);
-    glVertex3d(p2.x,p2.y,p2.z);
-    glEnd();
-    glPopMatrix();
-
-    //三角形3
-    //頂点座標
-    p0.x = 0;p0.y = 1.0;p0.z = 0;
-    p1.x = 2.0;p1.y = -1.0;p1.z = -2.0;
-    p2.x = 2.0;p2.y = -1.0;p2.z = 2.0;
-    //辺ベクトル
-    v1.x = p1.x-p0.x; v1.y = p1.y-p0.y; v1.z = p1.z-p0.z;
-    v2.x = p2.x-p0.x; v2.y = p2.y-p0.y; v1.z = p2.z-p0.z;
-    //方線ベクトル計算
-    n = normcrossprod(v1,v2);//三角形p0-p1-p2の法線ベクトルは辺ベクトルv1とv2の外戚
-    //材質
-    col[0] = 0.9;col[1]= .0;col[2] = 0.9; col[3] = 1.0;//拡散反射係数&環境後継すう(RGBA)
-    spe[0] = 1.0;spe[1]= 1.00;spe[2] = 1.0; col[3] = 1.0;//鏡面反射係数(RGBA)
-    shi[0] = 100.0;//ハイライト係数(p
-    glMaterialfv(GL_FRONT_AND_BACK,GL_AMBIENT_AND_DIFFUSE,col);
-    glMaterialfv(GL_FRONT_AND_BACK,GL_SPECULAR,spe);
-    glMaterialfv(GL_FRONT_AND_BACK,GL_SHININESS,shi);
-    //配置
-    glPushMatrix();//行列一時保存
-    glNormal3d(n.x,n.y,n.z);//法線ベクトルの設定
-    glBegin(GL_TRIANGLES);
-    glVertex3d(p0.x,p0.y,p0.z);
-    glVertex3d(p1.x,p1.y,p1.z);
-    glVertex3d(p2.x,p2.y,p2.z);
-    glEnd();
-    glPopMatrix();
     glPopMatrix();
     glutSwapBuffers();  //描画実行
 }
@@ -328,11 +213,10 @@ void timer(int value)
     getSerialData();  //加速度：val[0],val[1],val[2]，角速度val[3], val[4], val[5]を入手
     printf("(%f, %f, %f) (%f, %f, %f)\n", val[0], val[1], val[2], val[3], val[4], val[5]);
     if(fabs(val[0])>3){
-        
         alSourcePlay(soundSource);
     }
-    
-    alSourcef(soundSource,AL_PITCH,fabs(val[0]+1.0));//ピッチ設定
+
+    //alSourcef(soundSource,AL_PITCH,fabs(val[0]+1.0));//ピッチ設定
     deg +=val[5]/fr;//物体の回転角度の更新　フレームレートで割る
 }
 
@@ -410,7 +294,8 @@ void initGL()
     glutTimerFunc(1000/fr, timer, 0);  //タイマーコールバック関数（"timer"）
     
     //各種設定
-    glClearColor(0.0, 0.0, 0.2, 1.0);  //ウィンドウクリア色の指定（RGBA）
+    // glClearColor(1.0, 0.0, 0.2, 1.0);  //ウィンドウクリア色の指定（RGBA）
+    glClearColor(0.629f, 0.908f, 0.922f, 1.0f); // 青空をイメージしたRGB値 (スカイブルー)
     glEnable(GL_DEPTH_TEST);  //デプスバッファの有効化
     glEnable(GL_NORMALIZE);
     //光源設定
@@ -439,15 +324,15 @@ void initGL()
 //OpenAL初期設定
 void initAL()
 {
-
     ALuint soundBuffer; //バッファ
     alGenBuffers(1,&soundBuffer);//バッファ生成
-
+    
     //音源生成
-    soundBuffer = alutCreateBufferFromFile("pon.wav");//バッファにサウンドファイル取り込み
+    soundBuffer = alutCreateBufferFromFile("air.wav");//バッファにサウンドファイル取り込み
     alGenSources(1,&soundSource);//音源生成
     alSourcei(soundSource,AL_BUFFER,soundBuffer);//音源にバッファを結びつけ
-    alSourcei(soundSource,AL_LOOPING,AL_TRUE);//ループ再生設定(オフ)
+    //alSourcei(soundSource,AL_LOOPING,AL_TRUE);//ループ再生設定(オフ)
+    alSourcei(soundSource,AL_LOOPING,AL_TRUE);
     alSourcei(soundSource,AL_PITCH,1.0);//ピッチ設定
     alSourcei(soundSource,AL_GAIN,1.0);//音量設定（1が最大)
 }
@@ -460,6 +345,7 @@ void reshape(int w, int h)
     glLoadIdentity();  //行列初期化
     gluPerspective(30.0, (double)w/(double)h, 1.0, 1000.0);  //透視投影ビューボリューム設定
     winW = w; winH = h;  //ウィンドウサイズ保存
+    
 }
 
 //キーボードコールバック関数(key:キーの種類，x,y:座標)
@@ -471,6 +357,7 @@ void keyboard(unsigned char key, int x, int y)
         case 'w':
             y_speed=0.01;
             y_move-=10;
+            
             //alSourcePlay(soundSource);
             break;
         case 's':
@@ -481,12 +368,16 @@ void keyboard(unsigned char key, int x, int y)
         case 'a':
             y_speed=0.01;
             // y_move+=10;
+            //angle-=10;
             x_move+=10;
             //alSourcePlay(soundSource);
             break;
         case 'd':
             y_speed=-0.01;
             x_move-=10;
+            
+            //angle+=10;
+
             //alSourcePlay(soundSource);
             break;
         default:
@@ -583,6 +474,14 @@ double vectorNormalize(Vec_3D*vec){
 
 // 道路を描画する関数
 void drawRoad(float x, float y, float z, float width, float length) {
+     //光源0の位置指定
+    GLfloat col[4],spe[4],shi[1];
+    col[0] = .8;col[1]= 0.8;col[2] = 0.8;//拡散反射係数&環境後継すう(RGBA)
+    spe[0] = 1.0;spe[1]= 1.0;spe[2] = 1.0;//鏡面反射係数(RGBA)
+    shi[0] = 100.0;//ハイライト係数(p
+    glMaterialfv(GL_FRONT_AND_BACK,GL_AMBIENT_AND_DIFFUSE,col);
+    glMaterialfv(GL_FRONT_AND_BACK,GL_SPECULAR,spe);
+    glMaterialfv(GL_FRONT_AND_BACK,GL_SHININESS,shi);
     glPushMatrix();
     glTranslatef(x, y + 0.01f, z); // 少し上に上げて重なりを防ぐ
     glScalef(width, 0.02f, length); // 幅と長さを調整
@@ -593,9 +492,19 @@ void drawRoad(float x, float y, float z, float width, float length) {
 
 // 建物を描画
 void drawSolidBuilding(float x, float y, float z, float size, float r, float g, float b) {
+    if(buildcolor==1){
+        setColor(1.0, 0.0, 0.0, 1.0);
+    }else if(buildcolor==2){
+        setColor(0.0, 1.0, 0.0, 1.0);
+    }else if(buildcolor==3){
+        setColor(0.0, 0.0, 1.0, 1.0);
+        buildcolor=0;
+    }
     glPushMatrix();
     glTranslatef(x, y + size / 2.0f, z); // 中心を底面に合わせる
+    glScaled(1,5,1);
     glColor3f(r, g, b); // 色を設定
+    
     glutSolidCube(size); // 立方体を描画
     glPopMatrix();
 }
@@ -604,11 +513,24 @@ void drawSolidBuilding(float x, float y, float z, float size, float r, float g, 
 void generateBuildings() {
     srand(static_cast<unsigned int>(time(0))); // ランダムシード
     for (int i = 0; i < NUM_BUILDINGS; ++i) {
-        buildings[i].x = (rand() % 200) - 100;      // -100から100の範囲
-        buildings[i].z = (rand() % 200) - 100;     // -100から100の範囲
+        buildings[i].x = (rand() % 500) - 100;      // -100から100の範囲
+        buildings[i].z = (rand() % 500) - 100;     // -100から100の範囲
         buildings[i].size = (rand() % 10) + 1;     // サイズは1〜10
         buildings[i].r = static_cast<float>(rand() % 100) / 100.0f; // 0.0〜1.0
         buildings[i].g = static_cast<float>(rand() % 100) / 100.0f; // 0.0〜1.0
         buildings[i].b = static_cast<float>(rand() % 100) / 100.0f; // 0.0〜1.0
     }
+}
+// 色のセット
+void setColor(double r, double g, double b, double a)
+{
+    float col[4] = {(float)r, (float)g, (float)b, (float)a};
+    float spe[4], shi[1];
+
+//    col[0] = 1.0; col[1] = 0.0; col[2] = 1.0;  col[3] = 1.0;  //拡散反射係数
+    spe[0] = 1.0; spe[1] = 1.0; spe[2] = 1.0; spe[3] = 1.0;  //鏡面反射係数
+    shi[0] = 100.0;  //ハイライト係数
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, col);  //拡散反射
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, spe);  //鏡面反射
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, shi);  //ハイライト
 }
